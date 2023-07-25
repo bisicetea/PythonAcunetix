@@ -1,81 +1,86 @@
 import json
+from dotenv import load_dotenv
+import os
 import requests
 import time
 import urllib3
 
+load_dotenv()
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 def cleanup():
     # Delete the scan
-    dummy = requests.delete(MyAXURL + '/scans/' + MyScanID, headers=MyRequestHeaders, verify=False)
+    dummy = requests.delete(url + '/scans/' + scan_id, headers=request_header, verify=False)
     # Delete the target
-    dummy = requests.delete(MyAXURL + '/targets/' + MyTargetID, headers=MyRequestHeaders, verify=False)
+    dummy = requests.delete(url + '/targets/' + target_id, headers=request_header, verify=False)
 
 # Declare variables
-MyAXURL = "https://192.168.10.138:3443/api/v1"
-MyAPIKEY = "1986ad8c0a5b3df4d7028d5f3c06e936c1081212f1cfb4f2495dcd769a71d035b"
-MyTargetURL = "http://testphp.vulnweb.com/"
-MyTargetDESC = "Test PHP Site - created via ax-python-api.py"
-FullScanProfileID = "11111111-1111-1111-1111-111111111111"
-MyRequestHeaders = {'X-Auth': MyAPIKEY, 'Content-Type': 'application/json'}
+url = f"https://{os.getenv('HOST')}:{os.getenv('PORT')}/api/v1"
+api = os.getenv('API')
+target_url = "http://testphp.vulnweb.com/"
+target_description = "Test PHP Site - created via ax-python-api.py"
+fullscan_profile_id = "11111111-1111-1111-1111-111111111111"
+request_header = {'X-Auth': api, 'Content-Type': 'application/json'}
 
 # Create our intended target - target ID is in the JSON response
-MyRequestBody = {"address": MyTargetURL, "description": MyTargetDESC, "type": "default", "criticality": 10}
-MyTargetIDResponse = requests.post(MyAXURL + '/targets', json=MyRequestBody, headers=MyRequestHeaders, verify=False)
-MyTargetIDjson = json.loads(MyTargetIDResponse.content)
-MyTargetID = MyTargetIDjson["target_id"]
+request_body = {"address": target_url, "description": target_description, "type": "default", "criticality": 10}
+target_id_response = requests.post(url + '/targets', json=request_body, headers=request_header, verify=False)
+target_id_json = json.loads(target_id_response.content)
+target_id = target_id_json["target_id"]
 
 # Trigger a scan on the target - scan ID is in the HTTP response headers
-MyRequestBody = {
-    "profile_id": FullScanProfileID,
+request_body = {
+    "profile_id": fullscan_profile_id,
     "incremental": False,
     "schedule": {"disable": False, "start_date": None, "time_sensitive": False},
     "user_authorized_to_scan": "yes",
-    "target_id": MyTargetID
+    "target_id": target_id
 }
 
-MyScanIDResponse = requests.post(MyAXURL + '/scans', json=MyRequestBody, headers=MyRequestHeaders, verify=False)
-MyScanID = MyScanIDResponse.headers["Location"].replace("/api/v1/scans/", "")
+scan_id_response = requests.post(url + '/scans', json=request_body, headers=request_header, verify=False)
+scan_id = scan_id_response.headers["Location"].replace("/api/v1/scans/", "")
 
 LoopCondition = True
 while LoopCondition:
-    MyScanStatusResponse = requests.get(MyAXURL + '/scans/' + MyScanID, headers=MyRequestHeaders, verify=False)
-    MyScanStatusjson = json.loads(MyScanStatusResponse.content)
-    MyScanStatus = MyScanStatusjson["current_session"]["status"]
-    if MyScanStatus == "processing":
+    scanstatus_response = requests.get(url + '/scans/' + scan_id, headers=request_header, verify=False)
+    scan_status_json = json.loads(scanstatus_response.content)
+    scan_status = scan_status_json["current_session"]["status"]
+    if scan_status == "processing":
         print("Scan Status: Processing - waiting 30 seconds...")
-    elif MyScanStatus == "scheduled":
+    elif scan_status == "scheduled":
         print("Scan Status: Scheduled - waiting 30 seconds...")
-    elif MyScanStatus == "completed":
+    elif scan_status == "completed":
         LoopCondition = False
     else:
         print("Invalid Scan Status: Aborting")
         cleanup()
         exit()
-    MyScanStatus = ""
+    scan_status = ""
     time.sleep(30)
 
 # Obtain the scan session ID
-MyScanSessionResponse = requests.get(MyAXURL + '/scans/' + MyScanID, headers=MyRequestHeaders, verify=False)
-MyScanSessionjson = json.loads(MyScanSessionResponse.content)
-MyScanSessionID = MyScanSessionjson["current_session"]["scan_session_id"]
+scan_session_response = requests.get(url + '/scans/' + scan_id, headers=request_header, verify=False)
+scan_session_json = json.loads(scan_session_response.content)
+scan_session_id = scan_session_json["current_session"]["scan_session_id"]
 
 # Obtain the scan result ID
-MyScanResultResponse = requests.get(MyAXURL + '/scans/' + MyScanID + "/results", headers=MyRequestHeaders, verify=False)
-MyScanResultjson = json.loads(MyScanResultResponse.content)
-MyScanResultID = MyScanResultjson["results"][0]["result_id"]
+scan_result_response = requests.get(url + '/scans/' + scan_id + "/results", headers=request_header, verify=False)
+scan_result_json = json.loads(scan_result_response.content)
+scan_result_id = scan_result_json["results"][0]["result_id"]
 
 # Obtain scan vulnerabilities
-MyScanVulnerabilitiesResponse = requests.get(MyAXURL + '/scans/' + MyScanID + '/results/' + MyScanResultID + '/vulnerabilities',
-                                             headers=MyRequestHeaders, verify=False)
+scan_vulns_response = requests.get(url + '/scans/' + scan_id + '/results/' + scan_result_id + '/vulnerabilities',
+                                             headers=request_header, verify=False)
 
 print("")
-print("Target ID: " + MyTargetID)
-print("Scan ID: " + MyScanID)
-print("Scan Session ID: " + MyScanSessionID)
-print("Scan Result ID: " + MyScanResultID)
+print("Target ID: " + target_id)
+print("Scan ID: " + scan_id)
+print("Scan Session ID: " + scan_session_id)
+print("Scan Result ID: " + scan_result_id)
 print("")
 print("")
 print("Scan Vulnerabilities")
 print("====================")
 print("")
-print(MyScanVulnerabilitiesResponse.content)
+print(scan_vulns_response.content)
